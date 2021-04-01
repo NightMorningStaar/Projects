@@ -14,80 +14,6 @@ from keras.layers import Input, Lambda, Conv2D
 from keras.models import load_model, Model
 from yolo_utils import read_classes, read_anchors, generate_colors, preprocess_image, draw_boxes, scale_boxes
 from yad2k.models.keras_yolo import yolo_head, yolo_boxes_to_corners, preprocess_true_boxes, yolo_loss, yolo_body
-
-'''
-# Important Note: As you can see, we import Keras's backend as K. This means that to use a Keras function in this notebook,
-# you will need to write: K.function(...).
-
-
-
-# If you have 80 classes that you want the object detector to recognize, you can represent the class label $c$ either as an integer from 1 to 80,
-# or as an 80-dimensional vector (with 80 numbers) one component of which is 1 and the rest of which are 0. The video lectures had used the
-# latter representation; in this notebook, we will use both representations, depending on which is more convenient for a particular step.
-
-# In this exercise, you will learn how "You Only Look Once" (YOLO) performs object detection, and then apply it to car detection. Because
-# the YOLO model is very computationally expensive to train, we will load pre-trained weights for you to use.
-
-# 2 - YOLO
-# "You Only Look Once" (YOLO) is a popular algorithm because it achieves high accuracy while also being able to run in real-time.
-# This algorithm "only looks once" at the image in the sense that it requires only one forward propagation pass through the network to make predictions.
-# After non-max suppression, it then outputs recognized objects together with the bounding boxes.
-#
-# 2.1 - Model details
-# Inputs and outputs
-# The input is a batch of images, and each image has the shape (m, 608, 608, 3)
-# The output is a list of bounding boxes along with the recognized classes. Each bounding box is represented by 6
-# numbers $(p_c, b_x, b_y, b_h, b_w, c)$ as explained above. If you expand $c$ into an 80-dimensional vector, each bounding box
-# is then represented by 85 numbers.
-# Anchor Boxes
-# Anchor boxes are chosen by exploring the training data to choose reasonable height/width ratios that represent the different classes.
-# For this assignment, 5 anchor boxes were chosen for you (to cover the 80 classes), and stored in the file './model_data/yolo_anchors.txt'
-# The dimension for anchor boxes is the second to last dimension in the encoding: $(m, n_H,n_W,anchors,classes)$.
-# The YOLO architecture is: IMAGE (m, 608, 608, 3) -> DEEP CNN -> ENCODING (m, 19, 19, 5, 85).
-
-
-# 2.2 - Filtering with a threshold on class scores
-# You are going to first apply a filter by thresholding. You would like to get rid of any box for which the class "score" is less than a chosen threshold.
-#
-# The model gives you a total of 19x19x5x85 numbers, with each box described by 85 numbers. It is convenient to rearrange the (19,19,5,85)
-# (or (19,19,425)) dimensional tensor into the following variables:
-#
-# box_confidence: tensor of shape $(19 \times 19, 5, 1)$ containing $p_c$ (confidence probability that there's some object) for each
-# of the 5 boxes predicted in each of the 19x19 cells.
-# boxes: tensor of shape $(19 \times 19, 5, 4)$ containing the midpoint and dimensions $(b_x, b_y, b_h, b_w)$ for each of the 5 boxes in each cell.
-# box_class_probs: tensor of shape $(19 \times 19, 5, 80)$ containing the "class probabilities" $(c_1, c_2, ... c_{80})$ for each of the 80
-# classes for each of the 5 boxes per cell.
-
-# Compute box scores by doing the elementwise product as described in Figure 4 ($p \times c$).
-# The following code may help you choose the right operator:
-#
-# a = np.random.randn(19*19, 5, 1)
-# b = np.random.randn(19*19, 5, 80)
-# c = a * b # shape of c will be (19*19, 5, 80)
-# This is an example of broadcasting (multiplying vectors of different sizes).
-#
-# For each box, find:
-#
-# the index of the class with the maximum box score
-# the corresponding box score
-#
-# Useful references
-#
-# Keras argmax
-# Keras max
-# Additional Hints
-#
-# For the axis parameter of argmax and max, if you want to select the last axis, one way to do so is to set axis=-1. This is similar to Python
-# array indexing, where you can select the last position of an array using arrayname[-1].
-# Applying max normally collapses the axis for which the maximum is applied. keepdims=False is the default option, and allows that dimension to be removed.
-# We don't need to keep the last dimension after applying the maximum here.
-# Even though the documentation shows keras.backend.argmax, use keras.argmax. Similarly, use keras.max.
-# Create a mask by using a threshold. As a reminder: ([0.9, 0.3, 0.4, 0.5, 0.1] < 0.4) returns: [False, True, False, False, True]. The mask should be
-# True for the boxes you want to keep.
-#
-# Use TensorFlow to apply the mask to box_class_scores, boxes and box_classes to filter out the boxes we don't want. You should be left with just the
-# subset of boxes you want to keep.
-'''
 def yolo_filter_boxes(box_confidence, boxes, box_class_probs, threshold=.6):
     """Filters YOLO boxes by thresholding on object and class confidence.
 
@@ -140,32 +66,6 @@ with tf.compat.v1.Session() as test_a:
     print("scores.shape = " + str(scores.shape))
     print("boxes.shape = " + str(boxes.shape))
     print("classes.shape = " + str(classes.shape))
-'''
-# In this code, we use the convention that (0,0) is the top-left corner of an image, (1,0) is the upper-right corner, and (1,1) is the lower-right corner. In other words,
-# the (0,0) origin starts at the top left corner of the image. As x increases, we move to the right. As y increases, we move down.
-# For this exercise, we define a box using its two corners: upper left $(x_1, y_1)$ and lower right $(x_2,y_2)$, instead of using the midpoint, height and width.
-# (This makes it a bit easier to calculate the intersection).
-# To calculate the area of a rectangle, multiply its height $(y_2 - y_1)$ by its width $(x_2 - x_1)$. (Since $(x_1,y_1)$ is the top left and $x_2,y_2$ are
-# the bottom right, these differences should be non-negative.
-# To find the intersection of the two boxes $(xi_{1}, yi_{1}, xi_{2}, yi_{2})$:
-# Feel free to draw some examples on paper to clarify this conceptually.
-# The top left corner of the intersection $(xi_{1}, yi_{1})$ is found by comparing the top left corners $(x_1, y_1)$ of the two boxes and finding a vertex that
-# has an x-coordinate that is closer to the right, and y-coordinate that is closer to the bottom.
-# The bottom right corner of the intersection $(xi_{2}, yi_{2})$ is found by comparing the bottom right corners $(x_2,y_2)$ of the two boxes and finding a vertex
-# whose x-coordinate is closer to the left, and the y-coordinate that is closer to the top.
-# The two boxes may have no intersection. You can detect this if the intersection coordinates you calculate end up being the top right and/or bottom left corners
-# of an intersection box. Another way to think of this is if you calculate the height $(y_2 - y_1)$ or width $(x_2 - x_1)$ and find that at least one of these
-# lengths is negative, then there is no intersection (intersection area is zero).
-# The two boxes may intersect at the edges or vertices, in which case the intersection area is still zero. This happens when either the height or width (or both)
-# of the calculated intersection is zero.
-
-
-# xi1 = maximum of the x1 coordinates of the two boxes
-# yi1 = maximum of the y1 coordinates of the two boxes
-# xi2 = minimum of the x2 coordinates of the two boxes
-# yi2 = minimum of the y2 coordinates of the two boxes
-# inter_area = You can use max(height, 0) and max(width, 0)
-'''
 def iou(box1, box2):
     """Implement the intersection over union (IoU) between box1 and box2
 
@@ -263,23 +163,6 @@ with tf.compat.v1.Session() as test_b:
 
 
 # GRADED FUNCTION: yolo_eval
-'''
-It's time to implement a function taking the output of the deep CNN (the 19x19x5x85 dimensional encoding) and filtering through all the boxes using the functions 
-you've just implemented.
-
-Exercise: Implement yolo_eval() which takes the output of the YOLO encoding and filters the boxes using score threshold and NMS. There's just one last 
-implementational detail you have to know. There're a few ways of representing boxes, such as via their corners or via their midpoint and height/width. 
-YOLO converts between a few such formats at different times, using the following functions (which we have provided):
-
-boxes = yolo_boxes_to_corners(box_xy, box_wh)
-which converts the yolo box coordinates (x,y,w,h) to box corners' coordinates (x1, y1, x2, y2) to fit the input of yolo_filter_boxes
-
-boxes = scale_boxes(boxes, image_shape)
-YOLO's network was trained to run on 608x608 images. If you are testing this data on a different size image--for example, 
-the car detection dataset had 720x1280 images--this step rescales the boxes so that they can be plotted on top of the original 720x1280 image.
-
-Don't worry about these two functions; we'll show you where they need to be called.
-'''
 def yolo_eval(yolo_outputs, image_shape=(720., 1280.), max_boxes=10, score_threshold=.6, iou_threshold=.5):
     """
     Converts the output of YOLO encoding (a lot of boxes) to your predicted boxes along with their scores, box coordinates and classes.
@@ -332,32 +215,11 @@ with tf.compat.v1.Session() as test_b:
     print("scores.shape = " + str(scores.eval().shape))
     print("boxes.shape = " + str(boxes.eval().shape))
     print("classes.shape = " + str(classes.eval().shape))
-'''
-Summary for YOLO:¶
-Input image (608, 608, 3)
-The input image goes through a CNN, resulting in a (19,19,5,85) dimensional output.
-After flattening the last two dimensions, the output is a volume of shape (19, 19, 425):
-Each cell in a 19x19 grid over the input image gives 425 numbers.
-425 = 5 x 85 because each cell contains predictions for 5 boxes, corresponding to 5 anchor boxes, as seen in lecture.
-85 = 5 + 80 where 5 is because $(p_c, b_x, b_y, b_h, b_w)$ has 5 numbers, and 80 is the number of classes we'd like to detect
-You then select only few boxes based on:
-Score-thresholding: throw away boxes that have detected a class with a score less than the threshold
-Non-max suppression: Compute the Intersection over Union and avoid selecting overlapping boxes
-This gives you YOLO's final output.
-'''
 
 sess = tf.compat.v1.keras.backend.get_session()
 class_names = read_classes("model_data\\coco_classes.txt")
 anchors = read_anchors("model_data\\yolo_anchors.txt")
 image_shape = (720., 1280.)
 
-'''Loading a pre-trained model¶
-Training a YOLO model takes a very long time and requires a fairly large dataset of labelled bounding boxes for a large range of target classes.
-You are going to load an existing pre-trained Keras YOLO model stored in "yolo.h5".
-These weights come from the official YOLO website, and were converted using a function written by Allan Zelener. References are at the end of this notebook. Technically, these are the parameters from the "YOLOv2" model, but we will simply refer to it as "YOLO" in this notebook.
-Run the cell below to load the model from this file.
-'''
 
 yolo_model = load_model("model_data\\yolo.h5")
-yolo_model.output
-tf.keras.layers.Dropout
